@@ -1,0 +1,79 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Stamp rally booths" %}{% endblock %}
+{% block content %}
+    <h1>{% trans "Stamp rally booths" %}</h1>
+    <p>
+        {% blocktrans trimmed %}
+            Create one booth for each station in the rally. Booth staff open the scanner link on a phone
+            and scan each attendee’s ticket QR code. No paper stamp is needed.
+        {% endblocktrans %}
+    </p>
+    <p>
+        {% blocktrans trimmed with required=required active=active_count %}
+            Attendees complete the rally after {{ required }} of {{ active }} active booths.
+        {% endblocktrans %}
+    </p>
+    <p>
+        <a href="{% url "plugins:pretix_stamp_rally:booth.add" organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-primary">
+            <i class="fa fa-plus"></i> {% trans "Create a booth" %}
+        </a>
+        <a href="{% url "plugins:pretix_stamp_rally:progress" organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-default">
+            <i class="fa fa-list"></i> {% trans "Progress" %}
+        </a>
+        <a href="{% url "plugins:pretix_stamp_rally:settings" organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-default">
+            <i class="fa fa-wrench"></i> {% trans "Settings" %}
+        </a>
+    </p>
+    {% if booths %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                <tr>
+                    <th>{% trans "Booth" %}</th>
+                    <th>{% trans "Active" %}</th>
+                    <th>{% trans "Stamps" %}</th>
+                    <th class="text-right"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for booth in booths %}
+                    <tr>
+                        <td>
+                            <strong>
+                                <a href="{% url "plugins:pretix_stamp_rally:booth.edit" organizer=request.event.organizer.slug event=request.event.slug booth=booth.pk %}">
+                                    {{ booth.name }}
+                                </a>
+                            </strong>
+                            {% if booth.description %}<br><span class="text-muted">{{ booth.description|truncatewords:20 }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if booth.active %}
+                                <span class="text-success"><i class="fa fa-check"></i> {% trans "Active" %}</span>
+                            {% else %}
+                                <span class="text-muted">{% trans "Inactive" %}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ booth.stamp_total }}</td>
+                        <td class="text-right">
+                            <a href="{% url "plugins:pretix_stamp_rally:booth.scan" organizer=request.event.organizer.slug event=request.event.slug booth=booth.pk %}" class="btn btn-primary btn-sm">
+                                <i class="fa fa-qrcode"></i> {% trans "Scan" %}
+                            </a>
+                            <a href="{% url "plugins:pretix_stamp_rally:booth.edit" organizer=request.event.organizer.slug event=request.event.slug booth=booth.pk %}" class="btn btn-default btn-sm">
+                                <i class="fa fa-edit"></i>
+                            </a>
+                            <a href="{% url "plugins:pretix_stamp_rally:booth.delete" organizer=request.event.organizer.slug event=request.event.slug booth=booth.pk %}" class="btn btn-danger btn-sm">
+                                <i class="fa fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-collection">
+            <p>{% trans "You have not created any booths yet." %}</p>
+        </div>
+    {% endif %}
+{% endblock %}

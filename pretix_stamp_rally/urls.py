@@ -1,0 +1,67 @@
+from django.urls import re_path
+from pretix.multidomain import event_url
+
+from . import views
+
+urlpatterns = [
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/$",
+        views.BoothListView.as_view(),
+        name="booths",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/settings/$",
+        views.SettingsView.as_view(),
+        name="settings",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/progress/$",
+        views.ProgressView.as_view(),
+        name="progress",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/booths/add/$",
+        views.BoothCreateView.as_view(),
+        name="booth.add",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/booths/(?P<booth>\d+)/$",
+        views.BoothUpdateView.as_view(),
+        name="booth.edit",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/booths/(?P<booth>\d+)/delete/$",
+        views.BoothDeleteView.as_view(),
+        name="booth.delete",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/booths/(?P<booth>\d+)/token/$",
+        views.BoothTokenResetView.as_view(),
+        name="booth.token",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/booths/(?P<booth>\d+)/scan/$",
+        views.ControlScanView.as_view(),
+        name="booth.scan",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/booths/(?P<booth>\d+)/scan/api/$",
+        views.ControlScanAPIView.as_view(),
+        name="booth.scan.api",
+    ),
+]
+
+event_patterns = [
+    event_url(
+        r"^stamp-rally/scan/(?P<token>[^/]+)/$",
+        views.PublicScannerView.as_view(),
+        name="public.scan",
+        require_live=False,
+    ),
+    event_url(
+        r"^stamp-rally/scan/(?P<token>[^/]+)/api/$",
+        views.PublicScanAPIView.as_view(),
+        name="public.scan.api",
+        require_live=False,
+    ),
+]

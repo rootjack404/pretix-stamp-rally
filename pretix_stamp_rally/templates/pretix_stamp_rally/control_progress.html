@@ -1,0 +1,102 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Stamp rally progress" %}{% endblock %}
+{% block content %}
+    <h1>{% trans "Stamp rally progress" %}</h1>
+    <p>
+        {% blocktrans trimmed %}
+            Each row is an attendee who was scanned. The booth columns show where that ticket was scanned.
+            Complete means every active booth scanned them. Download the complete list to draw a raffle.
+        {% endblocktrans %}
+    </p>
+    <p>
+        <span class="btn-group">
+            <a href="?" class="btn btn-default{% if status == "all" %} active{% endif %}">
+                {% trans "All scanned" %} ({{ counts.scanned }})
+            </a>
+            <a href="?status=partial" class="btn btn-default{% if status == "partial" %} active{% endif %}">
+                {% trans "Partial" %} ({{ counts.partial }})
+            </a>
+            <a href="?status=complete" class="btn btn-default{% if status == "complete" %} active{% endif %}">
+                {% trans "Complete (all booths)" %} ({{ counts.complete }})
+            </a>
+        </span>
+        <a href="{% url "control:event.orders.export" organizer=request.event.organizer.slug event=request.event.slug %}?identifier=stamprally" class="btn btn-default">
+            <i class="fa fa-download"></i> {% trans "Export for raffle" %}
+        </a>
+    </p>
+    <p class="text-muted">
+        {% blocktrans trimmed with required=required booths=counts.booths %}
+            The scanner treats the rally as finished after {{ required }} booths.
+            This page marks complete only after all {{ booths }} active booths.
+        {% endblocktrans %}
+    </p>
+    {% if entries %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                <tr>
+                    <th>{% trans "Order" %}</th>
+                    <th>{% trans "Attendee" %}</th>
+                    <th>{% trans "Email" %}</th>
+                    <th>{% trans "Product" %}</th>
+                    {% for booth in booths %}
+                        <th>{{ booth.name }}</th>
+                    {% endfor %}
+                    <th>{% trans "Progress" %}</th>
+                    <th>{% trans "Raffle status" %}</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for entry in entries %}
+                    <tr>
+                        <td>
+                            <a href="{% url "control:event.order" organizer=request.event.organizer.slug event=request.event.slug code=entry.order.code %}">
+                                {{ entry.order.code }}-{{ entry.positionid }}
+                            </a>
+                        </td>
+                        <td>{{ entry.attendee_name_recorded }}</td>
+                        <td>
+                            {% if entry.attendee_email_recorded %}
+                                {{ entry.attendee_email_recorded }}
+                            {% else %}
+                                <span class="text-muted">–</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ entry.item }}</td>
+                        {% for stamp in entry.booth_cells %}
+                            <td>
+                                {% if stamp %}
+                                    <span class="text-success"><i class="fa fa-check"></i> {% trans "Scanned" %}</span>
+                                    <br><span class="text-muted">{{ stamp.datetime|date:"SHORT_DATETIME_FORMAT" }}</span>
+                                {% else %}
+                                    <span class="text-muted">–</span>
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                        <td>{{ entry.collected }}/{{ entry.booth_total }}</td>
+                        <td>
+                            {% if entry.complete %}
+                                <span class="text-success"><i class="fa fa-check"></i> {% trans "Complete" %}</span>
+                            {% else %}
+                                <span class="text-warning">{% trans "Partial" %}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "pretixcontrol/pagination.html" %}
+    {% else %}
+        <div class="empty-collection">
+            {% if status == "complete" %}
+                <p>{% trans "No attendee has been scanned at every booth yet." %}</p>
+            {% elif status == "partial" %}
+                <p>{% trans "No attendee is still missing a booth." %}</p>
+            {% else %}
+                <p>{% trans "No stamps have been scanned yet." %}</p>
+            {% endif %}
+        </div>
+    {% endif %}
+{% endblock %}

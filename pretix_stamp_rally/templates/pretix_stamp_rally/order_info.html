@@ -1,0 +1,30 @@
+{% load i18n %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <h3 class="panel-title">{% trans "Stamp rally" %}</h3>
+    </div>
+    <div class="panel-body">
+        {% for row in rows %}
+            <p>
+                <strong>{{ row.position.item }}</strong>
+                {% if row.position.attendee_name %} – {{ row.position.attendee_name }}{% endif %}
+                ({{ row.collected }}/{{ row.required }})
+                {% if row.complete %}
+                    <span class="label label-success">{% trans "Complete" %}</span>
+                {% endif %}
+            </p>
+            <ul class="list-unstyled">
+                {% for booth, got in row.booths %}
+                    <li>
+                        {% if got %}
+                            <i class="fa fa-check text-success"></i>
+                        {% else %}
+                            <i class="fa fa-circle-o text-muted"></i>
+                        {% endif %}
+                        {{ booth.name }}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endfor %}
+    </div>
+</div>

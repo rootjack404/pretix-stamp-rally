@@ -1,0 +1,4 @@
+[plugin]
+package = "pretix-stamp-rally"
+modules = [ "pretix_stamp_rally" ]
+marketplace_name = "stamp-rally"
