@@ -20,6 +20,31 @@ urlpatterns = [
         name="progress",
     ),
     re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/raffle/$",
+        views.RaffleView.as_view(),
+        name="raffle",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/raffle/stage/$",
+        views.RaffleStageView.as_view(),
+        name="raffle.stage",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/raffle/spin/$",
+        views.RaffleSpinAPIView.as_view(),
+        name="raffle.spin",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/raffle/(?P<draw>\d+)/void/$",
+        views.RaffleVoidView.as_view(),
+        name="raffle.void",
+    ),
+    re_path(
+        r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/raffle/(?P<draw>\d+)/export/$",
+        views.RaffleExportView.as_view(),
+        name="raffle.export",
+    ),
+    re_path(
         r"^control/event/(?P<organizer>[^/]+)/(?P<event>[^/]+)/stamp-rally/booths/add/$",
         views.BoothCreateView.as_view(),
         name="booth.add",

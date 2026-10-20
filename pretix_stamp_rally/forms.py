@@ -4,6 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from pretix.base.forms import SettingsForm
 
 from .models import StampRallyBooth
+from .services import PARTICIPATION_ALL, PARTICIPATION_COMPLETE, PARTICIPATION_PARTIAL
 
 
 class StampRallySettingsForm(SettingsForm):
@@ -31,6 +32,35 @@ class StampRallySettingsForm(SettingsForm):
         if value is None:
             raise ValidationError(_("Please enter a number."))
         return value
+
+
+class RaffleDrawForm(forms.Form):
+    title = forms.CharField(
+        label=_("Prize"),
+        required=False,
+        max_length=190,
+        help_text=_("Optional label, for example “Main prize”."),
+    )
+    pool = forms.ChoiceField(
+        label=_("Who can win"),
+        choices=(
+            (PARTICIPATION_COMPLETE, _("Complete — scanned at every active booth")),
+            (PARTICIPATION_ALL, _("Everyone who was scanned at least once")),
+            (PARTICIPATION_PARTIAL, _("Partial — missing at least one booth")),
+        ),
+        initial=PARTICIPATION_COMPLETE,
+    )
+    winner_count = forms.IntegerField(
+        label=_("Number of winners"),
+        min_value=1,
+        initial=1,
+        help_text=_("Each ticket is one entry. A person with two completed tickets can be drawn twice."),
+    )
+    exclude_previous = forms.BooleanField(
+        label=_("Skip tickets that already won"),
+        required=False,
+        initial=True,
+    )
 
 
 class BoothForm(forms.ModelForm):

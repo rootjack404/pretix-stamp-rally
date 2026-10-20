@@ -1,0 +1,132 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n %}
+{% load bootstrap3 %}
+{% block title %}{% trans "Stamp rally raffle" %}{% endblock %}
+{% block content %}
+    <h1>{% trans "Stamp rally raffle" %}</h1>
+    <p>
+        {% blocktrans trimmed %}
+            Draw winners from tickets that were scanned at the stamp rally. Each ticket is one entry.
+            The result is saved with the time and the person who ran the draw.
+        {% endblocktrans %}
+    </p>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+            <tr>
+                <th>{% trans "Pool" %}</th>
+                <th>{% trans "Tickets" %}</th>
+                <th>{% trans "Still available" %}</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for pool in pools %}
+                <tr>
+                    <td>{{ pool.label }}</td>
+                    <td>{{ pool.total }}</td>
+                    <td>{{ pool.available }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted">
+        {% trans "“Still available” skips tickets that already won a draw that was not voided." %}
+    </p>
+
+    {% if can_draw %}
+        <p>
+            <a class="btn btn-primary btn-lg" href="{% url "plugins:pretix_stamp_rally:raffle.stage" organizer=request.event.organizer.slug event=request.event.slug %}">
+                <i class="fa fa-random"></i> {% trans "Open slot machine" %}
+            </a>
+        </p>
+        <form action="" method="post" class="form-horizontal">
+            {% csrf_token %}
+            <fieldset>
+                <legend>{% trans "Or draw without the show" %}</legend>
+                {% bootstrap_form form layout="horizontal" %}
+            </fieldset>
+            <div class="form-group submit-group">
+                <button type="submit" class="btn btn-primary btn-save">
+                    <i class="fa fa-random"></i> {% trans "Draw now" %}
+                </button>
+            </div>
+        </form>
+    {% endif %}
+
+    <h2>{% trans "Draws" %}</h2>
+    {% if draws %}
+        {% for draw in draws %}
+            <div class="panel panel-default" id="draw-{{ draw.pk }}">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        {% if draw.title %}{{ draw.title }}{% else %}{% trans "Raffle draw" %}{% endif %}
+                        <span class="text-muted">· {{ draw.created|date:"SHORT_DATETIME_FORMAT" }}</span>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <p>
+                        {{ draw.get_pool_display }}.
+                        {% blocktrans trimmed with winners=draw.winner_count pool=draw.pool_size %}
+                            {{ winners }} winner(s) drawn from {{ pool }} tickets.
+                        {% endblocktrans %}
+                        {% if draw.exclude_previous %}
+                            {% trans "Previous winners were skipped." %}
+                        {% endif %}
+                        {% if draw.user %}
+                            {% blocktrans trimmed with name=draw.user.fullname|default:draw.user.email %}
+                                Drawn by {{ name }}.
+                            {% endblocktrans %}
+                        {% endif %}
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                            <tr>
+                                <th>{% trans "Place" %}</th>
+                                <th>{% trans "Order" %}</th>
+                                <th>{% trans "Attendee" %}</th>
+                                <th>{% trans "Email" %}</th>
+                                <th>{% trans "Booths" %}</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for winner in draw.winners.all %}
+                                <tr>
+                                    <td>{{ winner.place }}</td>
+                                    <td>
+                                        {% if winner.position %}
+                                            <a href="{% url "control:event.order" organizer=request.event.organizer.slug event=request.event.slug code=winner.order_code %}">
+                                                {{ winner.order_code }}-{{ winner.positionid }}
+                                            </a>
+                                        {% else %}
+                                            {{ winner.order_code }}-{{ winner.positionid }}
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ winner.attendee_name }}</td>
+                                    <td>{{ winner.attendee_email|default:"–" }}</td>
+                                    <td>{{ winner.booths_scanned }}/{{ winner.booths_total }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>
+                        <a class="btn btn-default btn-sm" href="{% url "plugins:pretix_stamp_rally:raffle.export" organizer=request.event.organizer.slug event=request.event.slug draw=draw.pk %}">
+                            <i class="fa fa-download"></i> {% trans "Download winners" %}
+                        </a>
+                        {% if can_draw %}
+                            <a class="btn btn-danger btn-sm" href="{% url "plugins:pretix_stamp_rally:raffle.void" organizer=request.event.organizer.slug event=request.event.slug draw=draw.pk %}">
+                                {% trans "Void this draw" %}
+                            </a>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-collection">
+            <p>{% trans "No raffle has been drawn yet." %}</p>
+        </div>
+    {% endif %}
+{% endblock %}

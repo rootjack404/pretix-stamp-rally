@@ -1,0 +1,29 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Void raffle draw" %}{% endblock %}
+{% block content %}
+    <h1>{% trans "Void raffle draw" %}</h1>
+    <form action="" method="post">
+        {% csrf_token %}
+        <p>
+            {% if draw.title %}
+                {% blocktrans trimmed with title=draw.title %}
+                    Void the draw for “{{ title }}”? The winners are removed and those tickets can be drawn again.
+                {% endblocktrans %}
+            {% else %}
+                {% trans "Void this draw? The winners are removed and those tickets can be drawn again." %}
+            {% endif %}
+        </p>
+        <ul>
+            {% for winner in draw.winners.all %}
+                <li>{{ winner.place }}. {{ winner.attendee_name }} ({{ winner.order_code }}-{{ winner.positionid }})</li>
+            {% endfor %}
+        </ul>
+        <div class="form-group submit-group">
+            <a href="{% url "plugins:pretix_stamp_rally:raffle" organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-default btn-cancel">
+                {% trans "Cancel" %}
+            </a>
+            <button type="submit" class="btn btn-danger btn-save">{% trans "Void draw" %}</button>
+        </div>
+    </form>
+{% endblock %}

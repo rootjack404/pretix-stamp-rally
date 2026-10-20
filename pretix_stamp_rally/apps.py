@@ -19,7 +19,7 @@ class PluginApp(PluginConfig):
         author = "ITSIP Travel"
         description = _(
             "Run a stamp rally where each booth scans the attendee’s ticket QR code. "
-            "Collect stamps across booths and mark attendees complete when they reach the required number."
+            "Collect stamps across booths, then draw a raffle from the attendees who finished."
         )
         visible = True
         version = __version__
@@ -31,6 +31,7 @@ class PluginApp(PluginConfig):
         ]
         navigation_links = [
             ((_("Stamp rally"), _("Progress")), "plugins:pretix_stamp_rally:progress", {}),
+            ((_("Stamp rally"), _("Raffle")), "plugins:pretix_stamp_rally:raffle", {}),
         ]
 
     def ready(self):

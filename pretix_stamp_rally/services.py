@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import urlparse
+
+from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 from django.utils.timezone import localtime
 from django.utils.translation import gettext
 from pretix.base.models import Order, OrderPosition
-from urllib.parse import urlparse
 
-from .models import StampRallyBooth, StampRallyStamp
+from .models import StampRallyBooth, StampRallyDraw, StampRallyStamp, StampRallyWinner
 
 STATUS_OK = "ok"
 STATUS_DUPLICATE = "duplicate"
@@ -268,6 +271,176 @@ def filter_by_participation(queryset, event, status):
     if status == PARTICIPATION_COMPLETE:
         return queryset.filter(stamp_count__gte=total)
     return queryset.filter(stamp_count__lt=total)
+
+
+class RaffleError(Exception):
+    pass
+
+
+def eligible_queryset(event, pool, exclude_previous=False):
+    queryset = filter_by_participation(progress_queryset(event), event, pool)
+    if exclude_previous:
+        already_won = StampRallyWinner.objects.filter(draw__event=event, position__isnull=False).values("position_id")
+        queryset = queryset.exclude(pk__in=already_won)
+    return queryset
+
+
+def raffle_pool_counts(event):
+    rows = []
+    for key, label in (
+        (PARTICIPATION_COMPLETE, gettext("Complete (all booths)")),
+        (PARTICIPATION_PARTIAL, gettext("Partial")),
+        (PARTICIPATION_ALL, gettext("All scanned")),
+    ):
+        rows.append(
+            {
+                "key": key,
+                "label": label,
+                "total": eligible_queryset(event, key, exclude_previous=False).count(),
+                "available": eligible_queryset(event, key, exclude_previous=True).count(),
+            }
+        )
+    return rows
+
+
+def draw_raffle(event, *, pool, winner_count, exclude_previous, user, title="", rng=None):
+    """Pick winners at random and store the result. Each ticket is one entry."""
+    pool = normalize_participation_filter(pool)
+    title = (title or "").strip()[:190]
+    if winner_count < 1:
+        raise RaffleError(gettext("Draw at least one winner."))
+
+    booths = list(active_booths(event))
+    with transaction.atomic():
+        candidates = list(eligible_queryset(event, pool, exclude_previous=exclude_previous))
+        if winner_count > len(candidates):
+            raise RaffleError(
+                gettext("Only {count} tickets can be drawn. Lower the number of winners.").format(count=len(candidates))
+            )
+        chosen = (rng or secrets.SystemRandom()).sample(candidates, winner_count)
+        draw = StampRallyDraw.objects.create(
+            event=event,
+            user=user,
+            title=title,
+            pool=pool,
+            winner_count=winner_count,
+            pool_size=len(candidates),
+            exclude_previous=exclude_previous,
+        )
+        logged_winners = []
+        for place, position in enumerate(chosen, start=1):
+            info = describe_participation(position, booths)
+            identity = info["identity"]
+            winner = StampRallyWinner.objects.create(
+                draw=draw,
+                position=position,
+                place=place,
+                attendee_name=(identity["name"] or attendee_label(position))[:255],
+                attendee_email=(identity["email"] or "")[:254],
+                order_code=(identity["order_code"] or "")[:16],
+                positionid=position.positionid,
+                booths_scanned=info["collected"],
+                booths_total=info["total"],
+            )
+            logged_winners.append(
+                {
+                    "place": winner.place,
+                    "order": winner.order_code,
+                    "positionid": winner.positionid,
+                    "name": winner.attendee_name,
+                }
+            )
+    event.log_action(
+        "pretix_stamp_rally.raffle.drawn",
+        user=user,
+        data={
+            "draw": draw.pk,
+            "title": draw.title,
+            "pool": draw.pool,
+            "pool_size": draw.pool_size,
+            "winners": logged_winners,
+        },
+    )
+    return draw
+
+
+def ticket_line(order_code, positionid):
+    code = order_code or ""
+    if positionid:
+        return f"{code}-{positionid}"
+    return code
+
+
+def raffle_face(position, booths):
+    info = describe_participation(position, booths)
+    identity = info["identity"]
+    name = (identity["name"] or attendee_label(position) or "").strip()
+    return {
+        "name": name,
+        "order": ticket_line(identity["order_code"] or position.order.code, position.positionid),
+        "position": position.pk,
+    }
+
+
+def spin_raffle(event, *, pool, user, title=""):
+    """Draw one winner and a reel that always stops on that winner."""
+    pool = normalize_participation_filter(pool)
+    booths = list(active_booths(event))
+    candidates = list(eligible_queryset(event, pool, exclude_previous=True))
+    if not candidates:
+        raise RaffleError(gettext("Nobody is left to draw."))
+    faces = [raffle_face(position, booths) for position in candidates]
+    draw = draw_raffle(
+        event,
+        pool=pool,
+        winner_count=1,
+        exclude_previous=True,
+        user=user,
+        title=title,
+    )
+    winner = draw.winners.get()
+    landing = {
+        "name": winner.attendee_name,
+        "order": ticket_line(winner.order_code, winner.positionid),
+        "position": winner.position_id,
+    }
+    others = [face for face in faces if face["position"] != winner.position_id]
+    secrets.SystemRandom().shuffle(others)
+    reel = []
+    if others:
+        while len(reel) < 20:
+            reel.extend(others)
+        reel = reel[:20]
+    else:
+        reel = [landing for _ in range(8)]
+    reel.append(landing)
+
+    def public(face):
+        return {"name": face["name"], "order": face["order"]}
+
+    return {
+        "draw": draw.pk,
+        "title": draw.title,
+        "winner": public(landing),
+        "reel": [public(face) for face in reel],
+        "remaining": eligible_queryset(event, pool, exclude_previous=True).count(),
+    }
+
+
+def void_raffle(draw, user):
+    event = draw.event
+    data = {
+        "draw": draw.pk,
+        "title": draw.title,
+        "pool": draw.pool,
+        "winners": [
+            {"place": winner.place, "order": winner.order_code, "name": winner.attendee_name}
+            for winner in draw.winners.all()
+        ],
+    }
+    with transaction.atomic():
+        draw.delete()
+    event.log_action("pretix_stamp_rally.raffle.voided", user=user, data=data)
 
 
 def participation_counts(event):

@@ -19,7 +19,8 @@ Features
 * Progress list in the backend and on the order page
 * Attendee name and email stored with each scan
 * Booth-by-booth view of who was scanned, with partial and complete (all booths) filters for a raffle
-* CSV / Excel export of that raffle list
+* CSV / Excel export of that list
+* Raffle draw from complete, partial, or all scanned tickets, with a slot-machine screen that stops on the winner’s name and order code
 * Data shredder for GDPR deletion
 
 Setup

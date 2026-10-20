@@ -1,11 +1,15 @@
+import csv
 import json
+
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils.functional import cached_property
+from django.utils.translation import gettext as gettext_now
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import CreateView, ListView, TemplateView, UpdateView, View
 from pretix.base.models import Event
@@ -14,18 +18,23 @@ from pretix.control.views.event import EventSettingsFormView, EventSettingsViewM
 from pretix.helpers.compat import CompatDeleteView
 from pretix.multidomain.urlreverse import eventreverse
 
-from .forms import BoothForm, StampRallySettingsForm
-from .models import StampRallyBooth
+from .forms import BoothForm, RaffleDrawForm, StampRallySettingsForm
+from .models import StampRallyBooth, StampRallyDraw, StampRallyWinner
 from .services import (
+    RaffleError,
     active_booths,
     attendee_label,
     collect_stamp,
     describe_participation,
+    draw_raffle,
     filter_by_participation,
+    spin_raffle,
     normalize_participation_filter,
     participation_counts,
     progress_queryset,
+    raffle_pool_counts,
     required_stamp_count,
+    void_raffle,
 )
 
 
@@ -305,6 +314,174 @@ class PublicScannerView(TemplateView):
         )
         ctx["is_control"] = False
         return ctx
+
+
+class RaffleView(EventPermissionRequiredMixin, TemplateView):
+    permission = "event.orders:read"
+    template_name = "pretix_stamp_rally/control_raffle.html"
+
+    def can_draw(self):
+        return self.request.user.has_event_permission(
+            self.request.organizer, self.request.event, "event.orders:write", request=self.request
+        )
+
+    def get_form(self):
+        if self.request.method == "POST":
+            return RaffleDrawForm(self.request.POST)
+        return RaffleDrawForm()
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["form"] = kwargs.get("form") or self.get_form()
+        ctx["can_draw"] = self.can_draw()
+        ctx["pools"] = raffle_pool_counts(self.request.event)
+        ctx["draws"] = (
+            self.request.event.stamp_rally_draws.select_related("user").prefetch_related("winners").all()
+        )
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        if not self.can_draw():
+            raise PermissionDenied()
+        form = RaffleDrawForm(request.POST)
+        if not form.is_valid():
+            return self.render_to_response(self.get_context_data(form=form))
+        try:
+            draw = draw_raffle(
+                request.event,
+                pool=form.cleaned_data["pool"],
+                winner_count=form.cleaned_data["winner_count"],
+                exclude_previous=form.cleaned_data["exclude_previous"],
+                user=request.user,
+                title=form.cleaned_data["title"],
+            )
+        except RaffleError as exc:
+            form.add_error(None, str(exc))
+            return self.render_to_response(self.get_context_data(form=form))
+        messages.success(request, _("Winners have been drawn."))
+        return redirect(
+            reverse(
+                "plugins:pretix_stamp_rally:raffle",
+                kwargs={"organizer": request.event.organizer.slug, "event": request.event.slug},
+            )
+            + f"#draw-{draw.pk}"
+        )
+
+
+class RaffleStageView(EventPermissionRequiredMixin, TemplateView):
+    permission = "event.orders:write"
+    template_name = "pretix_stamp_rally/raffle_stage.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["spin_url"] = reverse(
+            "plugins:pretix_stamp_rally:raffle.spin",
+            kwargs={
+                "organizer": self.request.event.organizer.slug,
+                "event": self.request.event.slug,
+            },
+        )
+        ctx["back_url"] = reverse(
+            "plugins:pretix_stamp_rally:raffle",
+            kwargs={
+                "organizer": self.request.event.organizer.slug,
+                "event": self.request.event.slug,
+            },
+        )
+        ctx["recent_winners"] = (
+            StampRallyWinner.objects.filter(draw__event=self.request.event).select_related("draw").order_by("-id")[:20]
+        )
+        return ctx
+
+
+class RaffleSpinAPIView(EventPermissionRequiredMixin, View):
+    permission = "event.orders:write"
+
+    def post(self, request, *args, **kwargs):
+        payload = {}
+        if request.content_type and "json" in request.content_type:
+            try:
+                payload = json.loads(request.body.decode() or "{}")
+            except ValueError:
+                payload = {}
+        else:
+            payload = request.POST
+        try:
+            result = spin_raffle(
+                request.event,
+                pool=payload.get("pool") or "complete",
+                user=request.user,
+                title=payload.get("title") or "",
+            )
+        except RaffleError as exc:
+            return JsonResponse({"status": "error", "message": str(exc)}, status=400)
+        result["status"] = "ok"
+        return JsonResponse(result)
+
+
+class RaffleVoidView(EventPermissionRequiredMixin, TemplateView):
+    permission = "event.orders:write"
+    template_name = "pretix_stamp_rally/control_raffle_void.html"
+
+    def get_draw(self):
+        return get_object_or_404(self.request.event.stamp_rally_draws.all(), pk=self.kwargs["draw"])
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["draw"] = self.get_draw()
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        draw = self.get_draw()
+        void_raffle(draw, request.user)
+        messages.success(request, _("The raffle draw has been voided. Those tickets can be drawn again."))
+        return redirect(
+            reverse(
+                "plugins:pretix_stamp_rally:raffle",
+                kwargs={"organizer": request.event.organizer.slug, "event": request.event.slug},
+            )
+        )
+
+
+class RaffleExportView(EventPermissionRequiredMixin, View):
+    permission = "event.orders:read"
+
+    def get(self, request, *args, **kwargs):
+        draw = get_object_or_404(
+            StampRallyDraw.objects.filter(event=request.event).prefetch_related("winners"),
+            pk=kwargs["draw"],
+        )
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        filename = f"stamp-rally-raffle-{request.event.slug}-{draw.pk}.csv"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response.write("\ufeff")
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                gettext_now("Place"),
+                gettext_now("Prize"),
+                gettext_now("Order code"),
+                gettext_now("Position"),
+                gettext_now("Attendee name"),
+                gettext_now("Attendee email"),
+                gettext_now("Booths scanned"),
+                gettext_now("Active booths"),
+            ]
+        )
+        for winner in draw.winners.all():
+            writer.writerow(
+                [
+                    winner.place,
+                    draw.title,
+                    winner.order_code,
+                    winner.positionid,
+                    winner.attendee_name,
+                    winner.attendee_email,
+                    winner.booths_scanned,
+                    winner.booths_total,
+                ]
+            )
+        return response
 
 
 class PublicScanAPIView(ScanAPIMixin, View):

@@ -54,6 +54,13 @@ def navbar_info(sender, request, **kwargs):
                 "active": active and url.url_name == "progress",
             }
         )
+        children.append(
+            {
+                "label": _("Raffle"),
+                "url": reverse("plugins:pretix_stamp_rally:raffle", kwargs=kw),
+                "active": active and url.url_name in ("raffle", "raffle.stage", "raffle.spin", "raffle.void", "raffle.export"),
+            }
+        )
     return [
         {
             "label": _("Stamp rally"),
@@ -101,6 +108,8 @@ def pretix_stamp_rally_logentry_display(sender, logentry, **kwargs):
         "pretix_stamp_rally.booth.deleted": _("A stamp rally booth was deleted."),
         "pretix_stamp_rally.booth.token_reset": _("A stamp rally scanner link was reset."),
         "pretix_stamp_rally.stamp.added": _("A stamp rally stamp was collected."),
+        "pretix_stamp_rally.raffle.drawn": _("A stamp rally raffle was drawn."),
+        "pretix_stamp_rally.raffle.voided": _("A stamp rally raffle draw was voided."),
     }
     return plains.get(logentry.action_type)
 

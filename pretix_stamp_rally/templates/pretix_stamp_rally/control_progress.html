@@ -6,7 +6,7 @@
     <p>
         {% blocktrans trimmed %}
             Each row is an attendee who was scanned. The booth columns show where that ticket was scanned.
-            Complete means every active booth scanned them. Download the complete list to draw a raffle.
+            Complete means every active booth scanned them. Use the raffle page to draw winners from this list.
         {% endblocktrans %}
     </p>
     <p>
@@ -21,8 +21,11 @@
                 {% trans "Complete (all booths)" %} ({{ counts.complete }})
             </a>
         </span>
+        <a href="{% url "plugins:pretix_stamp_rally:raffle" organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-primary">
+            <i class="fa fa-random"></i> {% trans "Raffle" %}
+        </a>
         <a href="{% url "control:event.orders.export" organizer=request.event.organizer.slug event=request.event.slug %}?identifier=stamprally" class="btn btn-default">
-            <i class="fa fa-download"></i> {% trans "Export for raffle" %}
+            <i class="fa fa-download"></i> {% trans "Export" %}
         </a>
     </p>
     <p class="text-muted">
